@@ -3,10 +3,15 @@ using DevExpress.XtraRichEdit;
 using DevExpress.XtraRichEdit.API.Native;
 using DevExpress.XtraRichEdit.API.Native.Implementation;
 
+using Newtonsoft.Json;
+
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 
 namespace DxBarCodeRepro
@@ -15,10 +20,45 @@ namespace DxBarCodeRepro
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello World!");
+            var dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var templateFile = Path.Combine(dir, "template.dotx");
+            var dataFile = Path.Combine(dir, "template.json");
+
+            using (var documentServer = new RichEditDocumentServer())
+            {
+                if (File.Exists(templateFile) && documentServer.LoadFileInDetectionMode(templateFile))
+                {
+
+                }
+                else
+                {
+                    throw new Exception("Could not load file");
+                }
+
+                documentServer.BeginUpdate();
+                try
+                {
+                    var dataText = File.ReadAllText(dataFile);
+                    var template = JsonConvert.DeserializeObject<Template>(dataText);
+                    InsertItems(documentServer.Document, template);
+                }
+                finally
+                {
+                    documentServer.EndUpdate();
+                }
+
+                SaveDocument(dir, documentServer);
+            }
         }
 
-        private IEnumerable<(TemplateItem templateItem, NativeBookmark)> IterateFields(SubDocument document, Template template)
+        private static void SaveDocument(string dir, RichEditDocumentServer documentServer)
+        {
+            var fileName = Path.Combine(dir, $"{Guid.NewGuid()}.docx");
+            documentServer.SaveDocument(fileName, DocumentFormat.OpenXml);
+            Process.Start(fileName);
+        }
+
+        private static IEnumerable<(TemplateItem templateItem, NativeBookmark)> IterateFields(SubDocument document, Template template)
         {
             var textMarkenInVorlagen = template.Fields.ToList();
             var bookmarkCount = document.Bookmarks.OfType<NativeBookmark>().ToList().Count;
@@ -30,7 +70,7 @@ namespace DxBarCodeRepro
                 {
                     foreach (var textMarke in template.Fields)
                     {
-                        if (bookmark.Name == textMarke.Name && textMarkenInVorlagen.Contains(textMarke))
+                        if (bookmark.Name == textMarke.TextMarkeName && textMarkenInVorlagen.Contains(textMarke))
                         {
                             textMarkenInVorlagen.Remove(textMarke);
                             yield return (textMarke, bookmark);
@@ -44,7 +84,7 @@ namespace DxBarCodeRepro
             yield break;
         }
 
-        private IEnumerable<SubDocument> IterateDocuments(Document doc)
+        private static IEnumerable<SubDocument> IterateDocuments(Document doc)
         {
             yield return doc;
 
@@ -69,7 +109,7 @@ namespace DxBarCodeRepro
             }
         }
 
-        DocumentRange BuildBarcode(SubDocument document, DocumentPosition start, TemplateItem foundFeld)
+        private static DocumentRange BuildBarcode(SubDocument document, DocumentPosition start, TemplateItem foundFeld)
         {
             if (!string.IsNullOrEmpty(foundFeld.Code))
             {
@@ -126,7 +166,7 @@ namespace DxBarCodeRepro
             return document.InsertText(start, string.Empty);
         }
 
-        public void InsertItems(
+        public static void InsertItems(
           Document document,
           Template template
           )
@@ -195,7 +235,7 @@ namespace DxBarCodeRepro
                 }
             }
         }
-        public DocumentRange InsertField(SubDocument document, DocumentPosition start, TemplateItem foundField)
+        public static DocumentRange InsertField(SubDocument document, DocumentPosition start, TemplateItem foundField)
         {
             if (foundField != null)
             {
@@ -211,7 +251,7 @@ namespace DxBarCodeRepro
     {
         public string Code { get; set; }
 
-        public string Name { get; set; }
+        public string TextMarkeName { get; set; }
         public float? BarCodeHeight { get; set; }
         public float? BarCodeWidth { get; set; }
         public float? BarCodeRotation { get; set; }
@@ -225,7 +265,7 @@ namespace DxBarCodeRepro
 
     public class Template
     {
-        public IEnumerable<TemplateItem> Fields { get; }
+        public IList<TemplateItem> Fields { get; set; }
 
     }
 }
