@@ -18,9 +18,9 @@ namespace DxBarCodeRepro
             Console.WriteLine("Hello World!");
         }
 
-        private IEnumerable<(TextmarkenInVorlagen textMarke, NativeBookmark)> IterateTextmarken(SubDocument document, Vorlage vorlage)
+        private IEnumerable<(TemplateItem templateItem, NativeBookmark)> IterateFields(SubDocument document, Template template)
         {
-            var textMarkenInVorlagen = vorlage.Textfelder.ToList();
+            var textMarkenInVorlagen = template.Fields.ToList();
             var bookmarkCount = document.Bookmarks.OfType<NativeBookmark>().ToList().Count;
 
             while (bookmarkCount > 0)
@@ -28,9 +28,9 @@ namespace DxBarCodeRepro
                 var bookmarks = document.Bookmarks.OfType<NativeBookmark>().OrderBy(b => b.Range.End.ToInt()).ToList();
                 foreach (var bookmark in bookmarks)
                 {
-                    foreach (var textMarke in vorlage.Textfelder)
+                    foreach (var textMarke in template.Fields)
                     {
-                        if (bookmark.Name == textMarke.TextMarkeName && textMarkenInVorlagen.Contains(textMarke))
+                        if (bookmark.Name == textMarke.Name && textMarkenInVorlagen.Contains(textMarke))
                         {
                             textMarkenInVorlagen.Remove(textMarke);
                             yield return (textMarke, bookmark);
@@ -69,7 +69,7 @@ namespace DxBarCodeRepro
             }
         }
 
-        DocumentRange BuildBarcode(SubDocument document, DocumentPosition start, TextmarkenInVorlagen foundFeld)
+        DocumentRange BuildBarcode(SubDocument document, DocumentPosition start, TemplateItem foundFeld)
         {
             if (!string.IsNullOrEmpty(foundFeld.Code))
             {
@@ -126,9 +126,9 @@ namespace DxBarCodeRepro
             return document.InsertText(start, string.Empty);
         }
 
-        public void FelderErsetzen(
+        public void InsertItems(
           Document document,
-          Vorlage vorlage
+          Template template
           )
         {
             using (var documentServer = new RichEditDocumentServer())
@@ -141,7 +141,7 @@ namespace DxBarCodeRepro
                         subDocument.BeginUpdate();
                         try
                         {
-                            foreach (var (textMarke, bookmark) in IterateTextmarken(subDocument, vorlage))
+                            foreach (var (textMarke, bookmark) in IterateFields(subDocument, template))
                             {
                                 var start = bookmark.Range.Start;
                                 var len = bookmark.Range.Length;
@@ -152,7 +152,7 @@ namespace DxBarCodeRepro
 
                                 subDocument.Replace(subDocument.CreateRange(start, len), "");
 
-                                var range = FeldEinfügen(subDocument, start, textMarke);
+                                var range = InsertField(subDocument, start, textMarke);
 
                                 var chars = subDocument.BeginUpdateCharacters(range);
                                 if (chars.Hidden.HasValue && chars.Hidden.Value)
@@ -195,11 +195,11 @@ namespace DxBarCodeRepro
                 }
             }
         }
-        public DocumentRange FeldEinfügen(SubDocument document, DocumentPosition start, TextmarkenInVorlagen foundFeld)
+        public DocumentRange InsertField(SubDocument document, DocumentPosition start, TemplateItem foundField)
         {
-            if (foundFeld != null)
+            if (foundField != null)
             {
-                return BuildBarcode(document, start, foundFeld);
+                return BuildBarcode(document, start, foundField);
             }
 
             return document.InsertText(start, string.Empty);
@@ -207,11 +207,11 @@ namespace DxBarCodeRepro
 
     }
 
-    public class TextmarkenInVorlagen
+    public class TemplateItem
     {
         public string Code { get; set; }
 
-        public string TextMarkeName { get; set; }
+        public string Name { get; set; }
         public float? BarCodeHeight { get; set; }
         public float? BarCodeWidth { get; set; }
         public float? BarCodeRotation { get; set; }
@@ -223,9 +223,9 @@ namespace DxBarCodeRepro
         public float? BarCodeScaleX { get; set; }
     }
 
-    public class Vorlage
+    public class Template
     {
-        public IEnumerable<TextmarkenInVorlagen> Textfelder { get; }
+        public IEnumerable<TemplateItem> Fields { get; }
 
     }
 }
